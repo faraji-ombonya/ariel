@@ -4,12 +4,21 @@ Network scanner server module.
 
 import ipaddress
 import socket
+import threading
+import logging
 
 HOST = ""
 PORT = 50009
 
 
-def start_sever():
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s", 
+    level=logging.DEBUG,
+)
+
+logger = logging.getLogger(__name__)
+
+def start_sever() -> None:
     """Start server and wait for incoming connections."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((HOST, PORT))
@@ -18,20 +27,28 @@ def start_sever():
         while True:
             try:
                 client_sock, addr = sock.accept()
-                with client_sock:
-                    print("Connected by", addr)
-                    data = client_sock.recv(1024).decode()
-
-                    subnet = ipaddress.ip_network(data)
-
-                    for ip in subnet.hosts():
-                        scan_ip(ip, 80)
-
-                    if not data: break  
-                    client_sock.sendall(data.encode())
+                client_thread = threading.Thread(
+                    target=handle_client_connection,
+                    args=(client_sock, addr),
+                )
+                client_thread.start()
             except Exception as e:
                 print(e)
 
+
+def handle_client_connection(client_socket: socket.socket, client_address: tuple) -> None:
+    """Handle client connection in a new thread."""
+    with client_socket:
+        logger.debug(f"Connected by: {client_address}")
+        data = client_socket.recv(1024).decode()
+
+        subnet = ipaddress.ip_network(data)
+
+        for ip in subnet.hosts():
+            scan_ip(ip, 80)
+
+        client_socket.sendall(data.encode())
+    
 
 
 def scan_ip(host: str, port: int) -> None:
